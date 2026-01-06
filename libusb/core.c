@@ -1390,6 +1390,42 @@ void API_EXPORTED libusb_unref_device(libusb_device *dev)
 	}
 }
 
+void LIBUSB_CALL libusb_listref_device(libusb_device *dev)
+{
+	usbi_warn(DEVICE_CTX(dev), "device %d.%d [%lX] refcnt = %d", dev->bus_number, dev->device_address, dev->session_data, dev->refcnt);
+}
+
+void LIBUSB_CALL libusb_listref_devices(libusb_context* ctx)
+{
+	struct libusb_context* _ctx;
+	struct libusb_device* dev;
+
+	if (!ctx) {
+		if (!usbi_default_context) {
+			usbi_dbg(ctx, "no default context, not initialized?");
+			usbi_mutex_static_unlock(&default_context_lock);
+			return;
+		}
+
+		if (--default_context_refcnt > 0) {
+			usbi_dbg(ctx, "not destroying default context");
+			usbi_mutex_static_unlock(&default_context_lock);
+			return;
+		}
+
+		usbi_dbg(ctx, "destroying default context");
+		_ctx = usbi_default_context;
+	}
+	else {
+		usbi_dbg(ctx, " ");
+		_ctx = ctx;
+	}
+
+	for_each_device(_ctx, dev) {
+		usbi_warn(_ctx, "device %d.%d [%lX] refcnt = %d", dev->bus_number, dev->device_address, dev->session_data, dev->refcnt);
+	}
+}
+
 /** \ingroup libusb_dev
  * Wrap a platform-specific system device handle and obtain a libusb device
  * handle for the underlying device. The handle allows you to use libusb to
@@ -2807,8 +2843,8 @@ void API_EXPORTED libusb_exit(libusb_context *ctx)
 	usbi_io_exit(_ctx);
 
 	for_each_device(_ctx, dev) {
-		usbi_warn(_ctx, "device %d.%d still referenced",
-			dev->bus_number, dev->device_address);
+		usbi_warn(_ctx, "device %d.%d (refcnt : %d) still referenced",
+			dev->bus_number, dev->device_address, dev->refcnt);
 		DEVICE_CTX(dev) = NULL;
 	}
 
