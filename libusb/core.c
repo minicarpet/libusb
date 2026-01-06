@@ -779,26 +779,35 @@ libusb_device* usbi_ref_device(libusb_device* dev)
 
 void usbi_unref_device(libusb_device* dev)
 {
-	long refcnt = -1;
-
 	if (!dev)
 		return;
 
+	long refcnt = -1;
+	struct libusb_context* _ctx = DEVICE_CTX(dev);
+	if (!_ctx) {
+		if (!usbi_default_context) {
+			usbi_mutex_static_unlock(&default_context_lock);
+			return;
+		}
+		_ctx = usbi_default_context;
+	}
+
+	usbi_mutex_lock(&_ctx->usb_devs_lock);
 	if (usbi_atomic_load(&dev->refcnt) > 0) { /* decrement only if positive value */
 		refcnt = usbi_atomic_dec(&dev->refcnt);
-		assert(refcnt >= 0);
 	}
 
 	if (refcnt == 0) {
 		usbi_unref_device(dev->parent_dev);
 		usbi_destroy_device(dev);
 	}
+	usbi_mutex_unlock(&_ctx->usb_devs_lock);
 }
 
 
 void usbi_destroy_device(libusb_device* dev)
 {
-	if (!dev->keep_device) {
+	if (!usbi_atomic_load(&dev->keep_device)) {
 		usbi_dbg(DEVICE_CTX(dev), "destroy device %d.%d", dev->bus_number, dev->device_address);
 
 		if (usbi_backend.destroy_device)
