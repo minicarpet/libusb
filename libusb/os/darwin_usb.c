@@ -709,7 +709,7 @@ static void darwin_devices_detached (void *ptr, io_iterator_t rem_devices) {
         /* signal the core that this device has been disconnected. the core will tear down this device
            when the reference count reaches 0 */
         usbi_disconnect_device(dev);
-        libusb_unref_device(dev);
+        usbi_unref_device(dev);
       }
     }
   }
@@ -1502,7 +1502,7 @@ static enum libusb_error process_new_device (struct libusb_context *ctx, struct 
     dev->session_data = cached_device->session;
 
     if (NULL != dev->parent_dev) {
-      libusb_unref_device(dev->parent_dev);
+      usbi_unref_device(dev->parent_dev);
       dev->parent_dev = NULL;
     }
 
@@ -1541,7 +1541,7 @@ static enum libusb_error process_new_device (struct libusb_context *ctx, struct 
   if (!cached_device->in_reenumerate && 0 == ret) {
     usbi_connect_device (dev);
   } else {
-    libusb_unref_device (dev);
+    usbi_unref_device (dev);
   }
 
   return ret;
