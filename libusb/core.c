@@ -1329,29 +1329,27 @@ void API_EXPORTED libusb_unref_device(libusb_device *dev)
 	if (!dev)
 		return;
 
+	usbi_dbg(DEVICE_CTX(dev), "unref device %d.%d", dev->bus_number, dev->device_address);
+
 	refcnt = usbi_atomic_dec(&dev->refcnt);
 	assert(refcnt >= 0);
 
-	if (refcnt == 0) {
+	if (refcnt == 0 && usbi_atomic_load(&dev->keep_device) == 0) {
 		usbi_dbg(DEVICE_CTX(dev), "destroy device %d.%d", dev->bus_number, dev->device_address);
 
-		libusb_unref_device(dev->parent_dev);
+		if (usbi_backend.destroy_device)
+			usbi_backend.destroy_device(dev);
 
-		if (usbi_atomic_load(&dev->keep_device) == 0) {
-			if (usbi_backend.destroy_device)
-				usbi_backend.destroy_device(dev);
-
-			if (!libusb_has_capability(LIBUSB_CAP_HAS_HOTPLUG)) {
-				/* backend does not support hotplug */
-				usbi_disconnect_device(dev);
-			}
-
-			for (int idx = 0; idx < LIBUSB_DEVICE_STRING_COUNT; ++idx) {
-				free(dev->device_strings_utf8[idx]);
-			}
-
-			free(dev);
+		if (!libusb_has_capability(LIBUSB_CAP_HAS_HOTPLUG)) {
+			/* backend does not support hotplug */
+			usbi_disconnect_device(dev);
 		}
+
+		for (int idx = 0; idx < LIBUSB_DEVICE_STRING_COUNT; ++idx) {
+			free(dev->device_strings_utf8[idx]);
+		}
+
+		free(dev);
 	}
 }
 
@@ -1380,6 +1378,11 @@ void API_EXPORTED libusb_unkeep_device(libusb_device* dev)
 {
 	long refcnt;
 
+	/* Unkeep parent first (symmetric with keep) */
+	if (dev->parent_dev) {
+		libusb_unkeep_device(dev->parent_dev);
+	}
+
 	usbi_atomic_store(&dev->keep_device, 0);
 
 	refcnt = usbi_atomic_load(&dev->refcnt);
@@ -1388,11 +1391,54 @@ void API_EXPORTED libusb_unkeep_device(libusb_device* dev)
 	if (refcnt == 0) {
 		usbi_dbg(DEVICE_CTX(dev), "destroy device %d.%d", dev->bus_number, dev->device_address);
 
-		if (dev->parent_dev) {
-			libusb_unkeep_device(dev->parent_dev);
+		if (usbi_backend.destroy_device)
+			usbi_backend.destroy_device(dev);
+
+		if (!libusb_has_capability(LIBUSB_CAP_HAS_HOTPLUG)) {
+			/* backend does not support hotplug */
+			usbi_disconnect_device(dev);
+		}
+
+		for (int idx = 0; idx < LIBUSB_DEVICE_STRING_COUNT; ++idx) {
+			free(dev->device_strings_utf8[idx]);
 		}
 
 		free(dev);
+	}
+}
+
+void LIBUSB_CALL libusb_listref_device(libusb_device *dev)
+{
+	usbi_warn(DEVICE_CTX(dev), "device %d.%d [%lX] refcnt = %d", dev->bus_number, dev->device_address, dev->session_data, dev->refcnt);
+}
+
+void LIBUSB_CALL libusb_listref_devices(libusb_context* ctx)
+{
+	struct libusb_context* _ctx;
+	struct libusb_device* dev;
+
+	if (!ctx) {
+		if (!usbi_default_context) {
+			usbi_dbg(ctx, "no default context, not initialized?");
+			usbi_mutex_static_unlock(&default_context_lock);
+			return;
+		}
+
+		if (--default_context_refcnt > 0) {
+			usbi_dbg(ctx, "not destroying default context");
+			usbi_mutex_static_unlock(&default_context_lock);
+			return;
+		}
+
+		_ctx = usbi_default_context;
+	}
+	else {
+		usbi_dbg(ctx, " ");
+		_ctx = ctx;
+	}
+
+	for_each_device(_ctx, dev) {
+		usbi_warn(_ctx, "device %d.%d [%lX], refcnt = %d, device kept = %d", dev->bus_number, dev->device_address, dev->session_data, dev->refcnt, dev->keep_device);
 	}
 }
 
@@ -2813,8 +2859,8 @@ void API_EXPORTED libusb_exit(libusb_context *ctx)
 	usbi_io_exit(_ctx);
 
 	for_each_device(_ctx, dev) {
-		usbi_warn(_ctx, "device %d.%d still referenced",
-			dev->bus_number, dev->device_address);
+		usbi_warn(_ctx, "device %d.%d (refcnt : %d) still referenced",
+			dev->bus_number, dev->device_address, dev->refcnt);
 		DEVICE_CTX(dev) = NULL;
 	}
 

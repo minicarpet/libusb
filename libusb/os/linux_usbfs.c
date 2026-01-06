@@ -1129,7 +1129,7 @@ retry:
 
 		if (priv->sysfs_dir) {
 			if (!strcmp(priv->sysfs_dir, parent_sysfs_dir)) {
-				dev->parent_dev = libusb_ref_device(it);
+				dev->parent_dev = it;  /* weak pointer - no ref */
 				break;
 			}
 		}

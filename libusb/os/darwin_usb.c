@@ -1501,13 +1501,13 @@ static enum libusb_error process_new_device (struct libusb_context *ctx, struct 
     usbi_localize_device_descriptor(&dev->device_descriptor);
     dev->session_data = cached_device->session;
 
-    if (NULL != dev->parent_dev) {
-      libusb_unref_device(dev->parent_dev);
-      dev->parent_dev = NULL;
-    }
-
+    dev->parent_dev = NULL;
     if (cached_device->parent_session > 0) {
-      dev->parent_dev = usbi_get_device_by_session_id (ctx, (unsigned long) cached_device->parent_session);
+      struct libusb_device *parent = usbi_get_device_by_session_id (ctx, (unsigned long) cached_device->parent_session);
+      if (parent) {
+        dev->parent_dev = parent;  /* weak pointer - no ref */
+        libusb_unref_device(parent);  /* release the ref from usbi_get_device_by_session_id */
+      }
     }
 
     (*priv->dev->device)->GetDeviceSpeed (priv->dev->device, &devSpeed);

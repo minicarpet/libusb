@@ -1900,6 +1900,10 @@ static int winusb_get_device_list(struct libusb_context *ctx, struct discovered_
 
 					priv = usbi_get_device_priv(dev);
 
+					if (pass == HUB_PASS) {
+						libusb_unref_device(dev);
+					}
+
 					if (priv->root_hub && dev->bus_number == bus_number + 1) {
 						// The bus number has already been assigned
 						bus_number++;
@@ -1998,6 +2002,8 @@ static int winusb_get_device_list(struct libusb_context *ctx, struct discovered_
 					if (!get_dev_port_number(*dev_info, &dev_info_data, &port_nr))
 						usbi_warn(ctx, "could not retrieve port number for device '%s': %s", dev_id, windows_error_str(0));
 					r = init_device(dev, parent_dev, (uint8_t)port_nr, dev_info_data.DevInst);
+					// init_device stores parent_dev as a weak pointer, so unref the reference from get_ancestor
+					libusb_unref_device(parent_dev);
 #if defined(LIBUSB_WINDOWS_HOTPLUG)
 				}
 #endif
