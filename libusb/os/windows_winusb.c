@@ -1988,19 +1988,14 @@ static int winusb_get_device_list(struct libusb_context *ctx, struct discovered_
 				break;
 			case GEN_PASS:
 				port_nr = 0;
-#if defined(LIBUSB_WINDOWS_HOTPLUG)
 				if (priv->initialized) {
 					libusb_unref_device(parent_dev);
 					r = LIBUSB_SUCCESS;
-				}
-				else {
-#endif
+				} else {
 					if (!get_dev_port_number(*dev_info, &dev_info_data, &port_nr))
 						usbi_warn(ctx, "could not retrieve port number for device '%s': %s", dev_id, windows_error_str(0));
 					r = init_device(dev, parent_dev, (uint8_t)port_nr, dev_info_data.DevInst);
-#if defined(LIBUSB_WINDOWS_HOTPLUG)
 				}
-#endif
 				if (r == LIBUSB_SUCCESS) {
 					// Append device to the list of discovered devices
 					if (_discdevs) {
